@@ -1,0 +1,25 @@
+{
+  "name": "gafh",
+  "version": "1.0.0",
+  "description": "Facebook messenger chatbot",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Raziv/Gafh.git"
+  },
+  "keywords": [
+    "chatbot"
+  ],
+  "author": "Rajiv",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Raziv/Gafh/issues"
+  },
+  "homepage": "https://github.com/Raziv/Gafh#readme",
+  "dependencies": {
+    "express": "^4.14.0"
+  }
+}
