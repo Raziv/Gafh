@@ -4,7 +4,7 @@ var bodyParser  = require('body-parser');
 var request     = require('request');
 var rssReader   = require('feed-read');
 
-var googleNewsEndpoint = "https://news.google.ca/news?cf=all&hl=en&pz=1&ned=ca&output=rss"
+var dark_sky_key       = process.env.DARK_SKY_KEY;
 var page_token         = process.env.PAGE_TOKEN;
 var port_token         = process.env.PORT_TOKEN;
 
@@ -47,71 +47,125 @@ app.post('/webhook', function (req, res) {
 });
 
 function receivedMessage(event) {
-    console.log("received");
+    //console.log("received");
     var senderID = event.sender.id;
     var recipientID = event.recipient.id;
     var timeOfMessage = event.timestamp;
     var message = event.message;
 
-    console.log("Received message for user %d and page %d at %d with message:",
-    senderID, recipientID, timeOfMessage);
-    console.log(JSON.stringify(message));
+    //console.log("Received message for user %d and page %d at %d with message:",
+    //senderID, recipientID, timeOfMessage);
+    //console.log(JSON.stringify(message));
 
     var messageId = message.mid;
-
     // You may get a text or attachment but not both
     var messageText = message.text;
-    var messageAttachments = message.attachments;
 
-    if (messageText) {
-        // If we receive a text message, check to see if it matches any special
-        // keywords and send back the corresponding example. Otherwise, just echo
-        // the text we received.
-        switch (messageText) {
-            case 'image':
-            sendImageMessage(senderID);
-            break;
+    // call Wit.AI API to retrieve intent of recieved message
+    callWitAI(messageText, function(err, witai_data){
+        //console.log('intent : ' + intent);
 
-            case 'button':
-            sendButtonMessage(senderID);
-            break;
+    });
+    handleIntent(senderID, witai_data);
+}
 
-            case 'generic':
-            sendGenericMessage(senderID);
-            break;
-
-            case 'receipt':
-            sendReceiptMessage(senderID);
-            break;
-
-            default:
-            //getArticles(function(err, articles){
-                //var content = messageText.concat('  ').concat(articles[0].title)
-                sendTextMessage(senderID, messageText);
-            //})
+function callWitAI(query, callback){
+  query = encodeURIComponent(query);
+    request({
+        uri: 'https://api.wit.ai/message?v=20161003&q='+query,
+        qs:  {access_token: 'IFCCAT4A44BJIK7YZURRKW5RDJQIF4GP'},
+        method: 'GET'
+      },function(error, response, body){
+        if (!error && response.statusCode == 200) {
+            try{
+                witai_data = JSON.parse(response.body);
+                callback(null, witai_data);
+            } catch(ex) {
+                callback(ex);
+            }
+        } else {
+            //console.log(response.statusCode);
+            //console.error("Unable to send message %m", error);
+            callback(error);
         }
-    } else if (messageAttachments) {
-        sendTextMessage(senderID, "Message with attachment received");
+    });
+}
+
+function handleIntent(senderID, witai_data){
+
+    intent = witai_data["entities"]["intent"][0]["value"];
+
+    switch(intent){
+        case "greeting":
+            sendTextMessage(senderID, "Hey, I am Gafh. :-)");
+            break;
+
+        case "weather":
+            location = witai_data["entities"]["location"][0]["value"];
+            getGeolocation(location, function(err, lat_lng){});
+            getWeatherData(lat_lng, function(err, summary){
+                curr_weather = summary;
+                console.log("weather : "+curr_weather);
+                sendTextMessage(senderID, curr_weather);
+            });
+            break;
+
+        default :
+            sendTextMessage(senderID, "Sorry, I am not trained to answer that yet :-(");
     }
 }
 
-function getArticles(callback){
-    rssReader(googleNewsEndpoint, function(err, articles){
-        if(err) {
-            callback(err)
-        } else {
-            if(articles.length > 0){
-                callback(null, articles)
-            } else {
-                callback("no articles recieved")
-            }
-        }
-    })
+function getGeolocation(location, callback){
+    console.log('location : '+location);
 
+    var API_KEY = "AIzaSyBYOu9ZmhY-QrVGOk4TCQPd2Qzc0b3CSXA";
+    var BASE_URL = "https://maps.googleapis.com/maps/api/geocode/json?address=";
+    var address = "260 Wellesley street, Toronto, Canada";
+    var url = BASE_URL + location + "&key=" + API_KEY;
+
+    request(url, function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+            res = JSON.parse(response.body);
+            lat = res["results"][0]["geometry"]["location"]["lat"];
+            lng = res["results"][0]["geometry"]["location"]["lng"];
+            lat_lng = (lat+","+lng).toString();
+            callback(null,lat_lng);
+        }
+        else {
+            // The request failed, handle it
+        }
+    });
+}
+
+
+//Using Dark Sky API to retrieve weather data
+function getWeatherData(lat_lng, callback){
+
+    request('https://api.darksky.net/forecast/b66ce5b0a9fa37518e4238304b935d43/'+lat_lng,
+        function(error, response, body){
+            if (!error && response.statusCode == 200) {
+                try{
+                    body= JSON.parse(response.body);
+                    summary = body["currently"]["summary"];
+                    humidity = ((body["currently"]["humidity"])*100).toFixed(2)+" % humid";
+                    temperature_f = body["currently"]["temperature"];
+                    temperature_c = ((((temperature_f-32)*5)/9).toFixed(2))+" \u00B0C";
+                    console.log(summary+' '+temperature_f);
+                    summary =(summary+", "+temperature_c+", "+humidity).toString();
+                    callback(null, summary);
+                } catch(ex) {
+                    callback(ex);
+                }
+            } else {
+                console.error("Unable to retrieve weather information %m", error);
+                callback(error);
+            }
+    });
 }
 
 function sendTextMessage(recipientId, messageText) {
-    console.log("send");
+
+    console.log(messageText);
     var messageData = {
         recipient: {
             id: recipientId
@@ -120,8 +174,7 @@ function sendTextMessage(recipientId, messageText) {
             text: messageText
         }
     };
-
-    callSendAPI(messageData);
+    callSendAPI(messageData)
 }
 
 function callSendAPI(messageData) {

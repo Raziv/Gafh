@@ -24,6 +24,8 @@
     "body-parser": "^1.15.2",
     "express": "^4.14.0",
     "feed-read": "0.0.1",
+    "geocoder": "^0.2.2",
+    "node-geocoder": "^3.15.0",
     "request": "^2.75.0",
     "rss-feed": "0.0.0"
   }
