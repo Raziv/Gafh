@@ -2,7 +2,7 @@
 prepipitateTime(body, clock_hand )
 data_type : minutely / hourly
 */
-exports.prepipitateTime =function(dsk_data, clock_hand, prec_status){
+exports.prepipitateTime = function(dsk_data, clock_hand, prec_status){
     var flag_rain_start, flag_rain_stop = 0;
     var retdata = 0;
 
@@ -15,7 +15,6 @@ exports.prepipitateTime =function(dsk_data, clock_hand, prec_status){
     var data = dsk_data[clock_hand]["data"];
 
     for(var i=0;i<data.length;i++){
-
         time2 = data[i]["time"];
         if(time2 > user_time){
             //rain will stop at :

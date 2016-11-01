@@ -42,6 +42,7 @@ function receivedMessage(event) {
     var senderID = event.sender.id;
     var recipientID = event.recipient.id;
     var timeOfMessage = event.timestamp;
+
     var message = event.message;
     var messageId = message.mid;
     var messageText = message.text;
@@ -84,13 +85,17 @@ function handleIntent(senderID, witai_data){
 
         case "weather":
             location = witai_data["entities"]["location"][0]["value"];
-            getGeolocation(location, function(err, lat_lng){
-                console.log(lat_lng);
-                getWeatherData(lat_lng, function(err, summary){
-                    curr_weather = summary;
-                    //console.log("weather : "+curr_weather);
-                    sendTextMessageTest(senderID, curr_weather);
-                });
+            getGeolocation(location, function(error, lat_lng){
+                if (!error) {
+                    getWeatherData(lat_lng, function(error, summary){
+                        curr_weather = summary;
+                        sendTextMessageTest(senderID, curr_weather);
+                    });
+                }
+                else{
+                    console.error("could not retrieve geolocation");
+                    sendTextMessage(senderID, "Sorry, I could not find your location :-(");
+                }
             });
             break;
 
@@ -99,10 +104,52 @@ function handleIntent(senderID, witai_data){
     }
 }
 
+function getGeolocation(location, callback){
+    console.log('location : '+location);
+    var API_KEY = properties.google_api_token;
+    var BASE_URL = properties.geolocation_endpoint;
+    var url = BASE_URL + location + "&key=" + API_KEY;
+
+    request(url, function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+            try{
+                res = JSON.parse(response.body);
+                lat = res["results"][0]["geometry"]["location"]["lat"];
+                lng = res["results"][0]["geometry"]["location"]["lng"];
+                lat_lng = (lat+","+lng).toString();
+                callback(null,lat_lng);
+            } catch(error) {
+                callback(error);
+            }
+        }
+        else {
+            console.error("Unable to retrieve geolocation %m", error);
+            callback(error);
+        }
+    });
+}
+
+//Using Dark Sky API to retrieve weather data
+function getWeatherData(lat_lng, callback){
+    var DARK_SKY_KEY = properties.dark_sky_key;
+    var BASE_URL = properties.dark_sky_endpoint;
+    var url = BASE_URL + DARK_SKY_KEY + "/" + lat_lng;
+
+    request(url, function(error, response, body) {
+        if (!error && response.statusCode == 200) {
+            //body= JSON.parse(response.body);
+            callback(null,body);
+        } else {
+            console.error("Unable to retrieve weather information %m", error);
+            callback(error);
+        }
+    });
+}
+
 function sendTextMessageTest(senderID,body){
-    //Current weather forecast
     body= JSON.parse(body);
-    var flag_rain_start, flag_rain_stop = 0;
+
+    //Current weather forecast
     summary = body["currently"]["summary"];
     time1 = body["currently"]["time"];
     curr_prec = body["currently"]["precipIntensity"];
@@ -138,7 +185,7 @@ function sendTextMessageTest(senderID,body){
         var time2, time_diff_stop_hr, time_diff_start_hr = 0;
         if(icon=='snow' || icon=='rain'){
             if(min_prec_status == 'start' || min_prec_status == 0){
-                var retdata = helper.prepipitateTime(body, 'hourly',min_prec_status);
+                var retdata = helper.prepipitateTime(body, 'hourly', min_prec_status);
                 if(retdata){
                     res = retdata.split(':');
                     hr_prec_status = res[0];
@@ -152,48 +199,6 @@ function sendTextMessageTest(senderID,body){
     weather_data = curr_weather_data + summary_hr + min_weather_data + hr_weather_data;
 
     sendTextMessage(senderID, weather_data);
-}
-
-function getGeolocation(location, callback){
-    console.log('location : '+location);
-    var API_KEY = properties.google_api_token;
-    var BASE_URL = properties.geolocation_endpoint;
-    var url = BASE_URL + location + "&key=" + API_KEY;
-
-    request(url, function (error, response, body) {
-        if (!error && response.statusCode == 200) {
-            res = JSON.parse(response.body);
-            lat = res["results"][0]["geometry"]["location"]["lat"];
-            lng = res["results"][0]["geometry"]["location"]["lng"];
-            lat_lng = (lat+","+lng).toString();
-            callback(null,lat_lng);
-        }
-        else {
-            // The request failed, handle it
-        }
-    });
-}
-
-//Using Dark Sky API to retrieve weather data
-function getWeatherData(lat_lng, callback){
-    var DARK_SKY_KEY = properties.dark_sky_key;
-    var BASE_URL = properties.dark_sky_endpoint;
-    var url = BASE_URL + DARK_SKY_KEY + "/" + lat_lng;
-
-    request(url, function(error, response, body) {
-        if (!error && response.statusCode == 200) {
-            try{
-                //body= JSON.parse(response.body);
-                callback(null,body);
-
-            } catch(ex) {
-                callback(ex);
-            }
-        } else {
-            console.error("Unable to retrieve weather information %m", error);
-            callback(error);
-        }
-    });
 }
 
 function sendTextMessage(recipientId, messageText) {
