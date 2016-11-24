@@ -5,7 +5,7 @@ var helper = require('../services/WeatherService.js');
 //GET request : webhook call
 exports.validateWebhook = function(req, res) {
     if (req.query['hub.mode'] === 'subscribe' &&
-    req.query['hub.verify_token'] === 'gafhbot_project') {
+    req.query['hub.verify_token'] === properties.verify_token) {
         console.log("Validating webhook");
         res.status(200).send(req.query['hub.challenge']);
     } else {
@@ -72,28 +72,75 @@ function callWitAI(query, senderID){
 }
 
 function handleIntent(senderID, witai_data){
+    var precipitate_type = '';
+    var weather_variable = '';
+    var weather_yesno = '';
+    var begin_end = '';
+
     try{
         intent = witai_data["entities"]["intent"][0]["value"];
     } catch(ex) {
-        intent = 'no_intent_found';
+        try{
+            //If only location is provided
+            location = witai_data["entities"]["location"][0]["value"];
+            intent = 'weather';
+        } catch(ex){
+            intent = 'intent_not_found';
+        }
     }
-    console.log(intent);
+
     switch(intent){
         case "greeting":
             sendTextMessage(senderID, "Hey, I am Gafh. :-)");
             break;
 
         case "weather":
-            location = witai_data["entities"]["location"][0]["value"];
+            //Location provided
+            try{
+                location = (witai_data["entities"]["location"][0]["value"]).trim();
+            }
+            catch(error) {
+                sendTextMessage(senderID, "Please provide the location");
+                break;
+            }
+            //Weather type provided
+            try{
+                precipitate_type = (witai_data["entities"]["precipitate_type"][0]["value"]).trim();
+            }
+            catch(error){
+                console.log("Precipitate type not provided");
+            }
+            //Weather variable provided
+            try{
+                weather_variable = (witai_data["entities"]["weather_variable"][0]["value"]).trim();
+            }
+            catch(error){
+                console.log("Weather variable not provided");
+            }
+            //Yes/No queries
+            try{
+                weather_yesno = (witai_data["entities"]["weather_yesno"][0]["value"]).trim();
+            }
+            catch(error){
+                console.log("Not a yes_no query");
+            }
+            //Begin/ENd queries
+            try{
+                begin_end = (witai_data["entities"]["begin_end"][0]["value"]).trim();
+            }
+            catch(error){
+                console.log("Not a begin end query");
+            }
+
             getGeolocation(location, function(error, lat_lng){
                 if (!error) {
                     getWeatherData(lat_lng, function(error, summary){
-                        curr_weather = summary;
-                        sendTextMessageTest(senderID, curr_weather);
+                        summary = JSON.parse(summary);
+                        sendTextMessageTest(senderID, summary, precipitate_type, weather_variable, weather_yesno, begin_end);
                     });
                 }
-                else{
-                    console.error("could not retrieve geolocation");
+                else {
+                    console.error("Could not retrieve geolocation");
                     sendTextMessage(senderID, "Sorry, I could not find your location :-(");
                 }
             });
@@ -104,8 +151,8 @@ function handleIntent(senderID, witai_data){
     }
 }
 
+//Retrieve geolocation from google api
 function getGeolocation(location, callback){
-    console.log('location : '+location);
     var API_KEY = properties.google_api_token;
     var BASE_URL = properties.geolocation_endpoint;
     var url = BASE_URL + location + "&key=" + API_KEY;
@@ -123,7 +170,7 @@ function getGeolocation(location, callback){
             }
         }
         else {
-            console.error("Unable to retrieve geolocation %m", error);
+            console.error("Unable to retrieve geolocation", error);
             callback(error);
         }
     });
@@ -137,72 +184,64 @@ function getWeatherData(lat_lng, callback){
 
     request(url, function(error, response, body) {
         if (!error && response.statusCode == 200) {
-            //body= JSON.parse(response.body);
             callback(null,body);
         } else {
-            console.error("Unable to retrieve weather information %m", error);
+            console.error("Unable to retrieve weather information", error);
             callback(error);
         }
     });
 }
 
-function sendTextMessageTest(senderID,body){
-    body= JSON.parse(body);
+function sendTextMessageTest(senderID, body, precipitate_type, weather_variable, weather_yesno, begin_end){
+    var weather_print_data = '';
+    var curr_weather_data = '';
+    var prec_yesno = '';
 
-    //Current weather forecast
-    summary = body["currently"]["summary"];
-    time1 = body["currently"]["time"];
-    curr_prec = body["currently"]["precipIntensity"];
-    humidity = ((body["currently"]["humidity"])*100).toFixed(2)+" % humid";
+    wind_speed = body["currently"]["windSpeed"];
+    humidity = ((body["currently"]["humidity"])*100).toFixed(2)+" %";
     temperature_f = body["currently"]["temperature"];
-    temperature_c = ((((temperature_f-32)*5)/9).toFixed(2))+" \u00B0C";
-    console.log(summary+' '+temperature_f);
-    curr_weather_data =(summary+", "+temperature_c+", "+humidity).toString();
+    feels_like_f = body["currently"]["apparentTemperature"];
+    temperature_c = helper.convertTemp(temperature_f);
+    feels_like_c = helper.convertTemp(feels_like_f);
+    summary_hr = ". "+body["hourly"]["summary"];
 
-    //Weather forecast per minute
-    var min_weather_data = '';
-    if(body["minutely"]){
-        icon = body["minutely"]["icon"];
-        data = body["minutely"]["data"];
-        var time2, time_diff_stop, time_diff_start, min_prec_status = 0;
-        if(icon=='rain' || icon=='partly-cloudy-day' || icon=='partly-cloudy-night'){
-            var retdata = helper.prepipitateTime(body, 'minutely');
-            if(retdata){
-                res = retdata.split(':');
-                min_prec_status = res[0];
-                start_stop_time = res[1];
-                min_weather_data = helper.printMessage(min_prec_status, start_stop_time, icon, 'min');
-            }
-        }
-    }
-
-    //Weather forecast per hr
-    var hr_weather_data = '';
-    if(body["hourly"]){
-        icon = body["hourly"]["icon"];
-        data = body["hourly"]["data"];
-        summary_hr = ". "+body["hourly"]["summary"];
-        var time2, time_diff_stop_hr, time_diff_start_hr = 0;
-        if(icon=='snow' || icon=='rain'){
-            if(min_prec_status == 'start' || min_prec_status == 0){
-                var retdata = helper.prepipitateTime(body, 'hourly', min_prec_status);
-                if(retdata){
-                    res = retdata.split(':');
-                    hr_prec_status = res[0];
-                    start_stop_time = res[1];
-                    hr_weather_data = helper.printMessage(hr_prec_status, start_stop_time, icon, 'hr');
+    //Weather variable
+    if(weather_variable){
+        switch(weather_variable){
+            case "wind speed":
+                weather_print_data = 'Wind speed: ' + wind_speed+' kph';
+                if(weather_yesno){
+                    if(wind_speed >2){
+                        weather_print_data="Yes, " + weather_print_data;
+                    } else {
+                        weather_print_data="No, " + weather_print_data;
+                    }
                 }
-            }
+                break;
+            case "temperature":
+                weather_print_data = 'Actual: ' + temperature_c + '\nFeels like: ' + feels_like_c ;
+                break;
+            case "humidity":
+                weather_print_data = 'Humidity: ' + humidity;
+                break;
         }
     }
-
-    weather_data = curr_weather_data + summary_hr + min_weather_data + hr_weather_data;
-
-    sendTextMessage(senderID, weather_data);
+    else if(precipitate_type){
+        channel = 'prec_type';
+        weather_print_data = helper.prec_forecast(body, precipitate_type, begin_end, weather_yesno, channel);
+    }
+    else{
+        //Current weather forecast
+        channel = 'weather_summary';
+        prec_status = helper.prec_forecast(body, channel);
+        summary = body["currently"]["summary"];
+        curr_weather_data =(summary+", "+temperature_c+", "+humidity+", "+wind_speed).toString();
+        weather_print_data = curr_weather_data + summary_hr + prec_status;
+    }
+    sendTextMessage(senderID, weather_print_data);
 }
 
 function sendTextMessage(recipientId, messageText) {
-    console.log(messageText);
     var messageData = {
         recipient: {
             id: recipientId
