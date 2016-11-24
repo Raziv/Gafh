@@ -91,7 +91,7 @@ function handleIntent(senderID, witai_data){
 
     switch(intent){
         case "greeting":
-            sendTextMessage(senderID, "Hey, I am Gafh. :-)");
+            sendTextMessage(senderID, "Hello, I am Gafh, a weather bot. :-)");
             break;
 
         case "weather":
@@ -136,7 +136,7 @@ function handleIntent(senderID, witai_data){
                 if (!error) {
                     getWeatherData(lat_lng, function(error, summary){
                         summary = JSON.parse(summary);
-                        sendTextMessageTest(senderID, summary, precipitate_type, weather_variable, weather_yesno, begin_end);
+                        getWeatherForecast(senderID, summary, precipitate_type, weather_variable, weather_yesno, begin_end);
                     });
                 }
                 else {
@@ -192,7 +192,7 @@ function getWeatherData(lat_lng, callback){
     });
 }
 
-function sendTextMessageTest(senderID, body, precipitate_type, weather_variable, weather_yesno, begin_end){
+function getWeatherForecast(senderID, body, precipitate_type, weather_variable, weather_yesno, begin_end){
     var weather_print_data = '';
     var curr_weather_data = '';
     var prec_yesno = '';
